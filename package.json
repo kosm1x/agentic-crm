@@ -15,6 +15,8 @@
     "register-team": "tsx scripts/register-hierarchy.ts"
   },
   "devDependencies": {
-    "better-sqlite3": "^12.6.2"
+    "better-sqlite3": "^12.6.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

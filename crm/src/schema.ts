@@ -40,6 +40,7 @@ export function createCrmSchema(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_crm_people_manager ON crm_people(manager_id);
     CREATE INDEX IF NOT EXISTS idx_crm_people_role ON crm_people(role);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_people_group_folder ON crm_people(group_folder) WHERE group_folder IS NOT NULL;
 
     -- Client accounts (advertisers)
     CREATE TABLE IF NOT EXISTS crm_accounts (
@@ -92,6 +93,7 @@ export function createCrmSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_crm_opps_owner ON crm_opportunities(owner_id);
     CREATE INDEX IF NOT EXISTS idx_crm_opps_account ON crm_opportunities(account_id);
     CREATE INDEX IF NOT EXISTS idx_crm_opps_stage ON crm_opportunities(stage);
+    CREATE INDEX IF NOT EXISTS idx_crm_opps_owner_stage ON crm_opportunities(owner_id, stage);
 
     -- Logged client interactions
     CREATE TABLE IF NOT EXISTS crm_interactions (
@@ -111,6 +113,7 @@ export function createCrmSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_crm_interactions_person ON crm_interactions(person_id);
     CREATE INDEX IF NOT EXISTS idx_crm_interactions_account ON crm_interactions(account_id);
     CREATE INDEX IF NOT EXISTS idx_crm_interactions_logged ON crm_interactions(logged_at);
+    CREATE INDEX IF NOT EXISTS idx_crm_interactions_person_logged ON crm_interactions(person_id, logged_at);
 
     -- Sales quotas
     CREATE TABLE IF NOT EXISTS crm_quotas (
@@ -124,6 +127,7 @@ export function createCrmSchema(db: Database.Database): void {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_crm_quotas_person ON crm_quotas(person_id);
+    CREATE INDEX IF NOT EXISTS idx_crm_quotas_person_period ON crm_quotas(person_id, period_start);
 
     -- Industry events
     CREATE TABLE IF NOT EXISTS crm_events (
@@ -180,6 +184,7 @@ export function createCrmSchema(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_crm_tasks_person ON crm_tasks_crm(person_id);
     CREATE INDEX IF NOT EXISTS idx_crm_tasks_due ON crm_tasks_crm(due_date);
+    CREATE INDEX IF NOT EXISTS idx_crm_tasks_person_status ON crm_tasks_crm(person_id, status);
 
     -- Audit trail
     CREATE TABLE IF NOT EXISTS crm_activity_log (

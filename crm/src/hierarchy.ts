@@ -47,46 +47,53 @@ export function getDirectReports(managerId: string): Person[] {
     .all(managerId) as Person[];
 }
 
-/** Check if personA is the direct manager of personB. */
+/** Check if personA is the direct manager of personB. Single-query check. */
 export function isManagerOf(managerId: string, reportId: string): boolean {
-  const report = getPersonById(reportId);
-  return report?.manager_id === managerId;
+  const row = db()
+    .prepare('SELECT 1 AS ok FROM crm_people WHERE id = ? AND manager_id = ?')
+    .get(reportId, managerId) as { ok: number } | undefined;
+  return row !== undefined;
 }
 
-/** Check if personA is a director over personB (two levels up). */
+/** Check if personA is a director over personB (one or two levels up). Single-query check. */
 export function isDirectorOf(directorId: string, personId: string): boolean {
-  const person = getPersonById(personId);
-  if (!person?.manager_id) return false;
-
-  // Direct report of the director
-  if (person.manager_id === directorId) return true;
-
-  // Report's manager reports to the director
-  const manager = getPersonById(person.manager_id);
-  return manager?.manager_id === directorId;
+  const row = db()
+    .prepare(`
+      SELECT 1 AS ok FROM crm_people WHERE id = ? AND (
+        manager_id = ?
+        OR EXISTS (
+          SELECT 1 FROM crm_people AS mgr
+          WHERE mgr.id = crm_people.manager_id AND mgr.manager_id = ?
+        )
+      )
+    `)
+    .get(personId, directorId, directorId) as { ok: number } | undefined;
+  return row !== undefined;
 }
 
 /** Check if a person is a VP (top of hierarchy). */
 export function isVp(personId: string): boolean {
-  const person = getPersonById(personId);
-  return person?.role === 'vp';
+  const row = db()
+    .prepare("SELECT 1 AS ok FROM crm_people WHERE id = ? AND role = 'vp'")
+    .get(personId) as { ok: number } | undefined;
+  return row !== undefined;
 }
 
-/** Get all people in a manager's subtree (recursive). */
+/** Get all people in a manager's subtree (recursive). Uses a single CTE query. */
 export function getSubtree(rootId: string): Person[] {
-  const result: Person[] = [];
-  const queue = [rootId];
-
-  while (queue.length > 0) {
-    const currentId = queue.shift()!;
-    const reports = getDirectReports(currentId);
-    for (const report of reports) {
-      result.push(report);
-      queue.push(report.id);
-    }
-  }
-
-  return result;
+  return db()
+    .prepare(`
+      WITH RECURSIVE subtree(id) AS (
+        SELECT id FROM crm_people WHERE manager_id = ? AND active = 1
+        UNION ALL
+        SELECT p.id FROM crm_people p
+        JOIN subtree s ON p.manager_id = s.id
+        WHERE p.active = 1
+      )
+      SELECT p.* FROM crm_people p
+      JOIN subtree s ON p.id = s.id
+    `)
+    .all(rootId) as Person[];
 }
 
 /** Check if sourceGroup has access to data owned by targetPersonId. */

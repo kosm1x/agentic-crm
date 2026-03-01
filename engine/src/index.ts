@@ -449,7 +449,11 @@ function ensureContainerSystemRunning(): void {
 async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
-  bootstrapCrm();  // CRM hook: initialize CRM schema and hooks
+  try {
+    bootstrapCrm();  // CRM hook: initialize CRM schema and hooks
+  } catch (err) {
+    logger.error({ err }, 'CRM bootstrap failed');
+  }
   logger.info('Database initialized');
   loadState();
 

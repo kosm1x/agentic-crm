@@ -28,6 +28,12 @@ vi.mock('../../engine/src/db.js', () => ({
   _initTestDatabase: () => {},
 }));
 
+const noop = () => {};
+const noopLogger = { info: noop, warn: noop, error: noop, debug: noop, fatal: noop, child: () => noopLogger };
+vi.mock('../../engine/src/logger.js', () => ({
+  logger: noopLogger,
+}));
+
 // Import ipc-handlers AFTER the mock is registered
 const { processCrmIpc } = await import('../src/ipc-handlers.js');
 
@@ -293,5 +299,139 @@ describe('unknown IPC types', () => {
       fakeDeps,
     );
     expect(result).toBe(false);
+  });
+});
+
+// ─── Audit log ────────────────────────────────────────────────────────────────
+
+describe('audit logging', () => {
+  beforeEach(setupDb);
+
+  it('writes audit log on interaction create', async () => {
+    await processCrmIpc(
+      { type: 'crm_log_interaction', interaction_type: 'call', summary: 'Audit test' },
+      'ae1',
+      false,
+      fakeDeps,
+    );
+
+    const log = testDb
+      .prepare("SELECT * FROM crm_activity_log WHERE entity_type = 'interaction'")
+      .get() as any;
+
+    expect(log).toBeDefined();
+    expect(log.action).toBe('create');
+    expect(log.person_id).toBe('ae1');
+  });
+
+  it('writes audit log on opportunity update', async () => {
+    await processCrmIpc(
+      { type: 'crm_update_opportunity', opportunity_id: 'opp1', stage: 'proposal' },
+      'ae1',
+      false,
+      fakeDeps,
+    );
+
+    const log = testDb
+      .prepare("SELECT * FROM crm_activity_log WHERE entity_type = 'opportunity'")
+      .get() as any;
+
+    expect(log).toBeDefined();
+    expect(log.action).toBe('update');
+    expect(log.entity_id).toBe('opp1');
+  });
+
+  it('writes audit log on task create', async () => {
+    await processCrmIpc(
+      { type: 'crm_create_task', title: 'Audit task' },
+      'ae1',
+      false,
+      fakeDeps,
+    );
+
+    const log = testDb
+      .prepare("SELECT * FROM crm_activity_log WHERE entity_type = 'task'")
+      .get() as any;
+
+    expect(log).toBeDefined();
+    expect(log.action).toBe('create');
+    expect(log.person_id).toBe('ae1');
+  });
+});
+
+// ─── crm_create_task ──────────────────────────────────────────────────────────
+
+describe('crm_create_task', () => {
+  beforeEach(setupDb);
+
+  it('creates task for valid person', async () => {
+    await processCrmIpc(
+      { type: 'crm_create_task', title: 'Follow up with client', priority: 'high' },
+      'ae1',
+      false,
+      fakeDeps,
+    );
+
+    const task = testDb
+      .prepare("SELECT * FROM crm_tasks_crm WHERE person_id = 'ae1'")
+      .get() as any;
+
+    expect(task).toBeDefined();
+    expect(task.title).toBe('Follow up with client');
+    expect(task.priority).toBe('high');
+    expect(task.status).toBe('pending');
+  });
+
+  it('returns true silently when person not found', async () => {
+    const result = await processCrmIpc(
+      { type: 'crm_create_task', title: 'Ghost task' },
+      'nonexistent',
+      false,
+      fakeDeps,
+    );
+
+    expect(result).toBe(true);
+
+    const count = testDb
+      .prepare('SELECT COUNT(*) as c FROM crm_tasks_crm')
+      .get() as any;
+    expect(count.c).toBe(0);
+  });
+});
+
+// ─── Input safety ─────────────────────────────────────────────────────────────
+
+describe('input type safety', () => {
+  beforeEach(setupDb);
+
+  it('rejects non-string notes in opportunity update', async () => {
+    await processCrmIpc(
+      { type: 'crm_update_opportunity', opportunity_id: 'opp1', notes: 12345 },
+      'ae1',
+      false,
+      fakeDeps,
+    );
+
+    const row = testDb
+      .prepare('SELECT notes FROM crm_opportunities WHERE id = ?')
+      .get('opp1') as { notes: string | null };
+
+    expect(row.notes).toBeNull(); // non-string notes not applied
+  });
+
+  it('handles non-string summary safely in interaction log', async () => {
+    await processCrmIpc(
+      { type: 'crm_log_interaction', interaction_type: 'call', summary: 42 },
+      'ae1',
+      false,
+      fakeDeps,
+    );
+
+    const row = testDb
+      .prepare('SELECT summary FROM crm_interactions ORDER BY created_at DESC LIMIT 1')
+      .get() as { summary: string };
+
+    // asString(42) returns undefined, falls back to ''
+    expect(row.summary).toBe('');
   });
 });

@@ -384,9 +384,13 @@ export async function processTaskIpc(
 
     default: {
       // CRM hook: delegate unknown IPC types to CRM handler
-      const handled = await processCrmIpc(data as Record<string, unknown>, sourceGroup, isMain, deps);
-      if (!handled) {
-        logger.warn({ type: data.type }, 'Unknown IPC task type');
+      try {
+        const handled = await processCrmIpc(data as Record<string, unknown>, sourceGroup, isMain, deps);
+        if (!handled) {
+          logger.warn({ type: data.type }, 'Unknown IPC task type');
+        }
+      } catch (err) {
+        logger.error({ err, type: data.type, sourceGroup }, 'CRM IPC handler threw');
       }
     }
   }
